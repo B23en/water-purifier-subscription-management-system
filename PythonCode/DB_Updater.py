@@ -3,11 +3,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from config import BASE_DIR
+
 
 # =========================================================
 # 경로 설정
 # =========================================================
-BASE_DIR = Path(r"V:\한국 정수기 계정")
 UPDATED_DIR = BASE_DIR / "2.UpdatedData"
 UPDATED_DONE_DIR = BASE_DIR / "2-2.UpdatedData_Done"
 DB_DIR = BASE_DIR / "3.KR_DB"

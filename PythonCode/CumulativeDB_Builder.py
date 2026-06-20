@@ -2,11 +2,12 @@ from pathlib import Path
 import re
 import pandas as pd
 
+from config import BASE_DIR
+
 
 # =========================================================
 # 기본 경로
 # =========================================================
-BASE_DIR = Path(r"V:\한국 정수기 계정")
 SUMMARY_DIR = BASE_DIR / "SummaryDB"
 
 BASE_FILE_NAME = "누적_2019.12.parquet"

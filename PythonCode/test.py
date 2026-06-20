@@ -1,8 +1,10 @@
 import os
 import pandas as pd
 
+from config import BASE_DIR
+
 # ✅ 경로 설정
-base_path = r"V:\한국 정수기 계정\SummaryDB"
+base_path = str(BASE_DIR / "SummaryDB")
 
 # ✅ csv 파일 목록
 csv_files = [f for f in os.listdir(base_path) if f.endswith(".csv")]

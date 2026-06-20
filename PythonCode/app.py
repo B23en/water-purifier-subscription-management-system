@@ -4,6 +4,7 @@ import importlib
 import streamlit as st
 import pandas as pd
 
+from config import BASE_DIR, LOGO_FILE
 from chatbot.chatbot_ui import render_chatbot
 
 from AccountUpdate import run_account_update
@@ -16,7 +17,6 @@ from CumulativeDB_Builder import run_cumulative_db_build_single_file
 # =========================================================
 # 기본 경로
 # =========================================================
-BASE_DIR = Path(r"V:\한국 정수기 계정")
 RAW_DIR = BASE_DIR / "1.RawData"
 MODEL_FILE = BASE_DIR / "0.Category" / "ModelCategory.csv"
 SUMMARY_DIR = BASE_DIR / "SummaryDB"
@@ -199,8 +199,8 @@ init_session()
 # ✅ 타이틀 영역 (이미지 + 텍스트)
 col1, col2 = st.columns([1, 8])
 
-# ✅ 로고 경로
-logo_path = Path(r"V:\한국 정수기 계정\PythonCode\IX2.0.jpg")
+# ✅ 로고 경로 (코드 옆 자산)
+logo_path = LOGO_FILE
 
 with col1:
     if logo_path.exists():

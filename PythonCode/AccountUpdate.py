@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from config import BASE_DIR
 from channel_mapper import load_channel_map, apply_channel
 from model_mapper import (
     load_model_map,
@@ -15,7 +16,6 @@ from model_mapper import (
 # =========================================================
 # 경로 설정
 # =========================================================
-BASE_DIR = Path(r"V:\한국 정수기 계정")
 RAW_DIR = BASE_DIR / "1.RawData"
 DONE_DIR = BASE_DIR / "1-1.RawData_Done"
 OUT_DIR = BASE_DIR / "2.UpdatedData"
