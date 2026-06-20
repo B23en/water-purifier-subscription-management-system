@@ -237,7 +237,7 @@ def _render_year_toggle_row(visible_cols, button_specs, data_type: str):
                 "−" if expanded else "+",
                 key=f"{_state_prefix(data_type)}_year_btn_{y}",
                 help=f"{y}년 월별 데이터 {'숨기기' if expanded else '보기'}",
-                width="stretch"
+                use_container_width=True
             ):
                 st.session_state[_year_state_key(data_type, y)] = not expanded
                 st.rerun()
@@ -605,7 +605,7 @@ def render_contract_type_grouped_dashboard(context, data_type: str):
 
     st.dataframe(
         _style_table(display_df),
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         height=760
     )

@@ -4,41 +4,54 @@ import os
 import json
 import re
 from dotenv import load_dotenv
-from openai import AzureOpenAI
+from openai import OpenAI, AzureOpenAI
 
 load_dotenv()
 
 
 # ==========================================================
-# ✅ Azure Client 생성
+# ✅ LLM Client 생성 (개인 OpenAI 키 우선, 없으면 Azure)
 # ==========================================================
-def get_azure_client():
+def get_llm_client():
+    """
+    우선순위
+    1) OPENAI_API_KEY 가 있으면 일반 OpenAI 사용 (개인 키 / 개발 환경 권장)
+       - 모델: OPENAI_MODEL (기본 gpt-4o-mini)
+    2) AZURE_OAI_* 3종이 있으면 Azure OpenAI 사용 (운영 환경)
+    3) 둘 다 없으면 (None, None, None) → 키워드 fallback
 
+    반환: (client, model, provider)
+    - OpenAI / AzureOpenAI 모두 client.chat.completions.create() 인터페이스 동일
+    """
+    # 1) 개인 OpenAI 키
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        try:
+            client = OpenAI(api_key=openai_key)
+            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            print(f"✅ OpenAI client 생성 성공 (model={model})")
+            return client, model, "openai"
+        except Exception as e:
+            print("🚨 OpenAI client 생성 실패:", e)
+
+    # 2) Azure OpenAI (운영)
     endpoint = os.getenv("AZURE_OAI_ENDPOINT")
-    api_key = os.getenv("AZURE_OAI_KEY")
+    azure_key = os.getenv("AZURE_OAI_KEY")
     deployment = os.getenv("AZURE_OAI_DEPLOYMENT")
+    if endpoint and azure_key and deployment:
+        try:
+            client = AzureOpenAI(
+                api_key=azure_key,
+                azure_endpoint=endpoint,
+                api_version="2024-02-15-preview",
+            )
+            print("✅ Azure client 생성 성공")
+            return client, deployment, "azure"
+        except Exception as e:
+            print("🚨 Azure client 생성 실패:", e)
 
-    print("🔍 [ENV 체크]")
-    print("endpoint:", endpoint)
-    print("api_key 존재:", bool(api_key))
-    print("deployment:", deployment)
-
-    if not endpoint or not api_key or not deployment:
-        print("🚨 [CASE1] ENV 누락 → fallback")
-        return None, None
-
-    try:
-        client = AzureOpenAI(
-            api_key=api_key,
-            azure_endpoint=endpoint,
-            api_version="2024-02-15-preview"
-        )
-        print("✅ Azure client 생성 성공")
-        return client, deployment
-
-    except Exception as e:
-        print("🚨 client 생성 실패:", e)
-        return None, None
+    print("🚨 사용 가능한 LLM 키 없음 → fallback")
+    return None, None, None
 
 
 # ==========================================================
@@ -146,15 +159,15 @@ def normalize_result(result: dict) -> dict:
 # ==========================================================
 def parse_query(user_input: str) -> dict:
 
-    client, deployment = get_azure_client()
+    client, model, provider = get_llm_client()
 
-    # ✅ CASE 1: ENV 문제
+    # ✅ CASE 1: 사용 가능한 키 없음
     if client is None:
-        print("🚨 [FALLBACK] client None")
+        print("🚨 [FALLBACK] LLM client 없음")
         return fallback_parse(user_input)
 
     try:
-        print("✅ [CASE2] Azure API 호출 시작")
+        print(f"✅ [CASE2] LLM 호출 시작 (provider={provider})")
 
         prompt = f"""
 반드시 아래 JSON 형식으로만 출력해라. 설명 금지. 코드블록 금지.
@@ -218,7 +231,7 @@ dashboard_supported:
 """
 
         res = client.chat.completions.create(
-            model=deployment,
+            model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )

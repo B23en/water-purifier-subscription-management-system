@@ -44,7 +44,6 @@ __pycache__/
 venv/
 env/
 ENV/
-.python-version
 
 # 패키징 / 빌드 산출물
 build/

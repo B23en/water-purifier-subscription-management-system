@@ -13,16 +13,19 @@ LG와 국립창원대학교가 연계하여 진행하는 에이전트 시스템 
 
 ## 🚀 개발 환경 구동
 
+**요구 버전: Python 3.11** (검증 기준 3.11.3). 패키지 버전은 `requirements.txt`에 고정되어 있습니다.
+
 경로는 코드에 고정돼 있지 않고 **환경변수 `WATER_BASE_DIR`(데이터 루트)** 로 주입합니다.
 설정하지 않으면 운영 기본값(`V:\한국 정수기 계정`)을 사용하므로 운영 환경은 변경이 필요 없습니다.
 
 ```bash
-# 1) 의존성 설치
-pip install streamlit pandas pyarrow matplotlib openpyxl python-dotenv openai
+# 1) 의존성 설치 (버전 고정)
+pip install -r requirements.txt
 
 # 2) 환경 설정: PythonCode/.env.example 를 .env 로 복사 후 값 입력
-#    - WATER_BASE_DIR: 로컬 데이터 루트 경로
-#    - AZURE_OAI_* : 챗봇용(미설정 시 키워드 fallback 동작)
+#    - WATER_BASE_DIR : 로컬 데이터 루트 경로
+#    - OPENAI_API_KEY : 챗봇용 개인 OpenAI 키 (이것만 넣어도 동작, 개발 권장)
+#    - AZURE_OAI_*    : 챗봇용 Azure(운영). 둘 다 없으면 키워드 fallback
 
 # 3) 데이터 루트 아래에 폴더 골격과 카테고리 CSV(0.Category/) 준비
 
@@ -30,6 +33,9 @@ pip install streamlit pandas pyarrow matplotlib openpyxl python-dotenv openai
 cd PythonCode
 streamlit run app.py
 ```
+
+> ℹ️ 챗봇의 Azure OpenAI는 사설 네트워크 전용으로 설정돼 있을 수 있습니다(공용 접근 차단 시 `403`).
+> 이 경우에도 앱은 키워드 규칙 기반 fallback으로 정상 동작합니다.
 
 ## ⚠️ 보안 주의
 
