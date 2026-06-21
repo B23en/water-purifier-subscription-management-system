@@ -1,0 +1,7 @@
+# 예측 모델(models/) 전용 추가 의존성 — Python 3.11 기준 / 버전 고정
+# (앱 root requirements.txt 에 더해 설치. 통합 시 팀장님이 root 로 병합)
+statsmodels==0.14.2
+scipy==1.13.1
+duckdb==1.0.0
+# numpy 는 statsmodels/scipy 가 강제하는 전이 의존성(>=1.22)이라 항상 설치됨(코드에서 직접 import).
+# pandas==2.2.1, pyarrow==16.0.0 는 root requirements.txt 에 이미 고정됨.
