@@ -69,6 +69,20 @@ htmlcov/
 .ipynb_checkpoints/
 
 # ════════════════════════════════════════════════════════════
+#  웹 크롤러 런타임 데이터
+# ════════════════════════════════════════════════════════════
+*.duckdb
+*.duckdb.wal
+
+WebCrawlDB/raw/**
+WebCrawlDB/logs/**
+WebCrawlDB/warehouse/**
+!WebCrawlDB/raw/.gitkeep
+!WebCrawlDB/logs/.gitkeep
+!WebCrawlDB/warehouse/.gitkeep
+!WebCrawlDB/schema.sql
+
+# ════════════════════════════════════════════════════════════
 #  로그 / 임시 파일
 # ════════════════════════════════════════════════════════════
 *.log
