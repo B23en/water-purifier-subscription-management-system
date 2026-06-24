@@ -19,6 +19,9 @@ def build_queries(targets: dict, source_id: str) -> list[dict]:
     if "keywords" in source:
         return _build_keyword_queries(source_id, source)
 
+    if "query_templates" in source:
+        return _build_source_template_queries(targets, source_id, source)
+
     template_group_names = source.get("use_template_groups", [])
     template_groups = targets.get("query_strategy", {}).get("template_groups", {})
     max_per_brand = int(
@@ -113,6 +116,78 @@ def _build_keyword_queries(source_id: str, source: dict[str, Any]) -> list[dict]
     return results
 
 
+def _build_source_template_queries(
+    targets: dict,
+    source_id: str,
+    source: dict[str, Any],
+) -> list[dict]:
+    results: list[dict] = []
+    seen: set[tuple[str, str | None]] = set()
+    brands = _iter_enabled_brands(targets, source)
+
+    for template in source.get("query_templates", []) or []:
+        placeholders = set(_PLACEHOLDER_RE.findall(str(template)))
+        if "brand" not in placeholders:
+            query = _normalize_query(str(template))
+            dedupe_key = (query, None)
+            if query and dedupe_key not in seen:
+                seen.add(dedupe_key)
+                results.append(
+                    _build_query_record(
+                        source_id=source_id,
+                        source=source,
+                        query=query,
+                        brand=None,
+                        template=str(template),
+                    )
+                )
+            continue
+
+        for brand in brands:
+            query = _normalize_query(
+                str(template).format(brand=brand.get("name", ""))
+            )
+            dedupe_key = (query, brand.get("id"))
+            if not query or dedupe_key in seen:
+                continue
+
+            seen.add(dedupe_key)
+            results.append(
+                _build_query_record(
+                    source_id=source_id,
+                    source=source,
+                    query=query,
+                    brand=brand,
+                    template=str(template),
+                )
+            )
+
+    return results
+
+
+def _build_query_record(
+    *,
+    source_id: str,
+    source: dict[str, Any],
+    query: str,
+    brand: dict[str, Any] | None,
+    template: str,
+) -> dict:
+    return {
+        "source_id": source_id,
+        "source_type": source.get("type"),
+        "cadence": source.get("cadence"),
+        "query": query,
+        "brand_id": brand.get("id") if brand else None,
+        "brand_name": brand.get("name") if brand else None,
+        "brand_priority": brand.get("priority") if brand else None,
+        "template_group": None,
+        "template": template,
+        "terms": {},
+        "max_results": source.get("display") or source.get("max_results_per_query"),
+    }
+
+
 def _iter_enabled_brands(targets: dict, source: dict[str, Any]) -> list[dict[str, Any]]:
     allowed_priorities = source.get("priorities")
     allowed_roles = source.get("roles", ["competitor"])
@@ -190,9 +265,6 @@ def _terms_for_placeholder(targets: dict, placeholder: str) -> list[str]:
     market_terms = targets.get("market_terms", {}) or {}
     if placeholder in market_terms:
         return _as_text_list(market_terms.get(placeholder))
-
-    if placeholder == "reaction":
-        return _as_text_list(targets.get("reaction_terms"))
 
     category_terms = targets.get("category_terms", {}) or {}
     if placeholder == "product_type":

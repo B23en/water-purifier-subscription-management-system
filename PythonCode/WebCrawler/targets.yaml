@@ -1,38 +1,25 @@
-﻿version: 1
-
-settings:
-  timezone: Asia/Seoul
-  default_language: ko
-  default_country: KR
+version: 1
 
 brands:
   - id: coway
     name: 코웨이
     priority: 1
     aliases: [Coway]
-    official_urls:
-      - https://www.coway.com/
 
   - id: cuckoo
     name: 쿠쿠
     priority: 1
     aliases: [쿠쿠홈시스, CUCKOO, 쿠쿠 인스퓨어, 인스퓨어]
-    official_urls:
-      - https://www.cuckoo.co.kr/
 
   - id: sk_magic
     name: SK매직
     priority: 1
     aliases: [SK magic, SK매직몰]
-    official_urls:
-      - https://www.skmagic.com/
 
   - id: samsung_electronics
     name: 삼성전자
     priority: 1
     aliases: [삼성, Samsung, BESPOKE, 비스포크, 삼성닷컴]
-    official_urls:
-      - https://www.samsung.com/sec/water-purifier/all-water-purifier/
 
 category_terms:
   core:
@@ -90,35 +77,6 @@ market_terms:
     - 누수
     - AS
 
-reaction_terms:
-  - 후기
-  - 추천
-  - 비교
-  - 장점
-  - 단점
-  - AS
-  - 필터
-  - 필터 교체
-  - 소음
-  - 누수
-  - 위약금
-  - 설치
-  - 관리
-
-context_rules:
-  product_context_terms:
-    - 정수기
-    - 얼음정수기
-    - 직수정수기
-    - 렌탈
-    - 구매
-    - 가전
-    - 필터
-    - 설치
-    - 관리
-    - 렌탈료
-    - 가격
-
 query_strategy:
   max_queries_per_brand_per_source: 15
 
@@ -129,10 +87,6 @@ query_strategy:
       - "{brand} 정수기 {marketing}"
       - "{brand} 정수기 {risk}"
       - "{brand} {product_type} {promotion}"
-
-    consumer_reaction:
-      - "{brand} 정수기 {reaction}"
-      - "{brand} {product_type} {reaction}"
 
     broad_market:
       - "정수기 {launch}"
@@ -154,42 +108,20 @@ sources:
     enabled: true
     type: api
     cadence: daily
-    use_template_groups:
-      - consumer_reaction
-    max_results_per_query: 30
+    display: 10
+    sort: date
+    fetch_body: true
+    body_limit_per_query: 5
+    query_templates:
+      - "{brand} 정수기 후기"
+      - "{brand} 정수기 리뷰"
+      - "{brand} 정수기 단점"
+      - "{brand} 신제품 정수기 후기"
 
-  naver_cafe:
+  naver_shopping:
     enabled: true
     type: api
     cadence: daily
-    use_template_groups:
-      - consumer_reaction
-    max_results_per_query: 30
-
-  naver_datalab_search:
-    enabled: true
-    type: api
-    cadence: daily
-    keywords:
-      - 정수기
-      - 얼음정수기
-      - 직수정수기
-      - 정수기 구매
-      - 정수기 렌탈
-      - 코웨이 정수기
-      - 쿠쿠 정수기
-      - SK매직 정수기
-      - 청호나이스 정수기
-
-  official_mall:
-    enabled: false
-    type: scrape
-    cadence: daily
-
-  shopping_review:
-    enabled: false
-    type: scrape
-    cadence: weekly
-
-
-
+    display: 50
+    sort: sim
+    query_template: "{brand} 정수기"
