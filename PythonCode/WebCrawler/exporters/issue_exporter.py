@@ -169,8 +169,10 @@ def remove_export_labels(text: str) -> str:
     ignored_prefixes = (
         "published_at:",
         "url:",
+        "blogger:",
         "description:",
         "article_text:",
+        "blog_text:",
     )
     cleaned_lines = []
 
@@ -185,11 +187,47 @@ def remove_export_labels(text: str) -> str:
     return "\n".join(cleaned_lines)
 
 
-def build_compact_source_text(text: str) -> str:
-    article_text = extract_section(text, "article_text")
+def source_body_sections(source_id: str | None) -> tuple[str, ...]:
+    if source_id == "naver_blog":
+        return ("blog_text", "article_text")
+    if source_id == "naver_news":
+        return ("article_text", "blog_text")
+    return ("article_text", "blog_text")
+
+
+def build_compact_source_text(text: str, source_id: str | None = None) -> str:
+    for section_name in source_body_sections(source_id):
+        section_text = extract_section(text, section_name)
+        if section_text:
+            return remove_export_labels(section_text)
+
     description = extract_section(text, "description")
-    source_text = article_text or description or text
+    source_text = description or text
     return remove_export_labels(source_text)
+
+
+def clip_text(text: str, max_chars: int) -> str:
+    normalized = text.strip()
+    if max_chars <= 0 or len(normalized) <= max_chars:
+        return normalized
+    return normalized[:max_chars].rstrip() + "..."
+
+
+def content_extract_status(metadata: dict[str, Any]) -> dict[str, Any]:
+    extract_success = (
+        metadata.get("article_extract_success")
+        if metadata.get("article_extract_success") is not None
+        else metadata.get("body_extract_success")
+    )
+    text_length = metadata.get("article_text_length")
+    if text_length is None:
+        text_length = metadata.get("body_text_length")
+
+    return {
+        "extract_success": extract_success,
+        "text_length": text_length,
+        "html_path": metadata.get("article_html_path") or metadata.get("body_html_path"),
+    }
 
 
 def split_sentences(text: str) -> list[str]:
@@ -361,7 +399,6 @@ def load_monthly_summaries(
     where_clauses = [
         "COALESCE(published_at, created_at) >= ?",
         "COALESCE(published_at, created_at) < ?",
-        "COALESCE(is_relevant, TRUE) = TRUE",
     ]
     params: list[Any] = [
         f"{start_date.isoformat()} 00:00:00",
@@ -397,8 +434,18 @@ def load_monthly_summaries(
             prompt_version,
             CAST(created_at AS VARCHAR) AS created_at,
             metadata_json
-        FROM document_summaries
-        WHERE {" AND ".join(where_clauses)}
+        FROM (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY doc_id, content_hash
+                    ORDER BY created_at DESC, prompt_version DESC
+                ) AS summary_rank
+            FROM document_summaries
+            WHERE {" AND ".join(where_clauses)}
+        ) ranked_summaries
+        WHERE summary_rank = 1
+          AND COALESCE(is_relevant, TRUE) = TRUE
         ORDER BY COALESCE(published_at, created_at) DESC
     """
 
@@ -417,6 +464,7 @@ def build_issue(
     max_summary_chars: int,
 ) -> dict[str, Any]:
     metadata = parse_json(document.get("metadata_json"))
+    extract_status = content_extract_status(metadata)
     combined_text = "\n".join(
         [
             str(document.get("title") or ""),
@@ -451,8 +499,13 @@ def build_issue(
             "url": document.get("url"),
             "raw_path": document.get("raw_path"),
             "text_path": document.get("text_path"),
+            "extract_success": extract_status["extract_success"],
+            "extract_text_length": extract_status["text_length"],
+            "extract_html_path": extract_status["html_path"],
             "article_extract_success": metadata.get("article_extract_success"),
             "article_text_length": metadata.get("article_text_length"),
+            "blog_extract_success": metadata.get("body_extract_success"),
+            "blog_text_length": metadata.get("body_text_length"),
         },
         "evidence_text": evidence_text,
     }
@@ -464,8 +517,12 @@ def build_compact_document(
     excerpt_chars: int,
 ) -> dict[str, Any]:
     text = read_text(document.get("text_path"), max(excerpt_chars * 20, 10000))
-    source_text = build_compact_source_text(text)
+    source_text = build_compact_source_text(
+        text,
+        source_id=document.get("source_id"),
+    )
     metadata = parse_json(document.get("metadata_json"))
+    extract_status = content_extract_status(metadata)
     event_timestamp = document.get("published_at") or document.get("crawled_at")
 
     return {
@@ -475,23 +532,32 @@ def build_compact_document(
         "excerpt": build_relevant_excerpt(source_text, excerpt_chars),
         "url": document.get("url"),
         "source": document.get("source_id"),
+        "extract_success": extract_status["extract_success"],
+        "extract_text_length": extract_status["text_length"],
         "article_extract_success": metadata.get("article_extract_success"),
+        "blog_extract_success": metadata.get("body_extract_success"),
     }
 
 
 def build_summary_document(summary: dict[str, Any]) -> dict[str, Any]:
     event_timestamp = summary.get("published_at") or summary.get("created_at")
+    metadata = parse_json(summary.get("metadata_json"))
 
     return {
+        "summary_id": summary.get("summary_id"),
+        "doc_id": summary.get("doc_id"),
         "date": str(event_timestamp or "")[:10] or None,
+        "brand_id": summary.get("brand_id"),
         "brand": summary.get("brand_name"),
         "title": summary.get("title"),
+        "event_type": metadata.get("event_type"),
         "summary": summary.get("summary"),
         "key_points": parse_json_list(summary.get("key_points_json")),
         "evidence_excerpt": summary.get("evidence_excerpt"),
         "mentioned_products": parse_json_list(
             summary.get("mentioned_products_json")
         ),
+        "sentiment": metadata.get("sentiment"),
         "confidence": summary.get("confidence"),
         "url": summary.get("source_url"),
         "source": summary.get("source_id"),
@@ -584,7 +650,17 @@ def export_monthly_issues(
 
     issues = []
     for document in raw_documents:
-        evidence_text = read_text(document.get("text_path"), max_evidence_chars)
+        document_text = read_text(
+            document.get("text_path"),
+            max(max_evidence_chars * 20, 10000),
+        )
+        evidence_text = clip_text(
+            build_compact_source_text(
+                document_text,
+                source_id=document.get("source_id"),
+            ),
+            max_evidence_chars,
+        )
         issue = build_issue(
             document,
             evidence_text=evidence_text,
