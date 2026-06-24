@@ -60,6 +60,58 @@ def is_doc_exists(db_path: Path, url_hash: str) -> bool:
 
     return row is not None
 
+
+def update_raw_doc_content(
+    db_path: Path,
+    *,
+    url_hash: str,
+    raw_path: str,
+    text_path: str,
+    content_hash: str,
+    crawled_at: str,
+    metadata_json: dict[str, Any] | list[Any] | str | None,
+) -> bool:
+    if isinstance(metadata_json, (dict, list)):
+        metadata_json = json.dumps(metadata_json, ensure_ascii=False)
+
+    with duckdb.connect(str(db_path)) as connection:
+        existing = connection.execute(
+            """
+            SELECT 1
+            FROM raw_documents
+            WHERE url_hash = ?
+            LIMIT 1
+            """,
+            [url_hash],
+        ).fetchone()
+
+        if existing is None:
+            return False
+
+        connection.execute(
+            """
+            UPDATE raw_documents
+            SET
+                raw_path = ?,
+                text_path = ?,
+                content_hash = ?,
+                crawled_at = ?,
+                metadata_json = ?
+            WHERE url_hash = ?
+            """,
+            [
+                raw_path,
+                text_path,
+                content_hash,
+                crawled_at,
+                metadata_json,
+                url_hash,
+            ],
+        )
+
+    return True
+
+
 def insert_raw_doc(db_path: Path, document: dict[str, Any]) -> bool:
     doc_id = document.get("doc_id")
     if not doc_id:

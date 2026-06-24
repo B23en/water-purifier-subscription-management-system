@@ -77,9 +77,11 @@ htmlcov/
 WebCrawlDB/raw/**
 WebCrawlDB/logs/**
 WebCrawlDB/warehouse/**
+WebCrawlDB/exports/**
 !WebCrawlDB/raw/.gitkeep
 !WebCrawlDB/logs/.gitkeep
 !WebCrawlDB/warehouse/.gitkeep
+!WebCrawlDB/exports/.gitkeep
 !WebCrawlDB/schema.sql
 
 # ════════════════════════════════════════════════════════════
