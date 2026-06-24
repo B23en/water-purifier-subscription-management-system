@@ -1,0 +1,14 @@
+# 세그먼트 Δ계정수 회귀 + SHAP 비교실험(4모델) + STL 전용 의존성
+# 독립 모듈이라 root requirements.txt(streamlit/openai 등 앱용, 옛 버전 고정으로
+# Python 3.13에서 소스빌드 유발)는 설치하지 않음 — 이 파일만으로 완전히 동작.
+pandas>=2.2.3
+pyarrow>=17
+matplotlib>=3.9
+python-dotenv>=1.0.1
+scikit-learn>=1.5
+xgboost>=2.1
+lightgbm>=4.5
+catboost>=1.2.5
+shap>=0.46
+statsmodels>=0.14.2
+duckdb>=1.0.0
