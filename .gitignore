@@ -94,3 +94,6 @@ temp/
 Thumbs.db
 desktop.ini
 $RECYCLE.BIN/
+
+# 분석 결과 차트 (생성 파일 — 커밋 불필요)
+models/segment_shap/contribution_outputs/
