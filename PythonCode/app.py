@@ -47,6 +47,9 @@ def init_session():
         "api_success": None,
         "api_result": None,
         "force_tab_sync": False,
+        # 챗봇 기간 보정의 기준 '최신월'(전월) — 화면 기본기간과 동일 로직 재사용
+        "latest_month": get_default_period()[1],
+        "llm_provider": None,
     }
 
     for k, v in defaults.items():
@@ -252,11 +255,16 @@ with st.sidebar:
 
 
 
-    st.markdown("### ☁️ Azure API 상태")
-    if st.session_state.get("api_success") is True:
-        st.success("Azure API 호출 성공")
+    st.markdown("### ☁️ LLM 호출 상태")
+    _provider = st.session_state.get("llm_provider")
+    if _provider == "openai":
+        st.success("🟢 OpenAI 호출 성공")
+    elif _provider == "azure":
+        st.success("🟢 Azure 호출 성공")
+    elif _provider == "fallback":
+        st.info("🟡 키워드 fallback (LLM 미사용)")
     elif st.session_state.get("api_success") is False:
-        st.error("Azure API 호출 실패")
+        st.error("❌ 처리 실패")
     else:
         st.caption("아직 호출 이력이 없습니다.")
 

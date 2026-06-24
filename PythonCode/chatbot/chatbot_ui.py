@@ -16,11 +16,13 @@ def render_chatbot(dashboard_registry):
             return
 
         try:
-            # ✅ Azure API 호출
+            # ✅ 챗봇 질의 파싱 (OpenAI > Azure > 키워드 fallback)
             result = parse_query(user_input)
 
-            # ✅ API 상태 저장
-            st.session_state["api_success"] = True
+            # ✅ 실제 사용된 경로(openai/azure/fallback)를 상태로 저장
+            provider = result.get("provider", "fallback")
+            st.session_state["llm_provider"] = provider
+            st.session_state["api_success"] = provider in ("openai", "azure")
             st.session_state["api_result"] = result
 
             # ✅ ✅ ✅ 이력 저장 (핵심)
@@ -36,6 +38,7 @@ def render_chatbot(dashboard_registry):
         except Exception as e:
             # ✅ 실패 처리
             st.session_state["api_success"] = False
+            st.session_state["llm_provider"] = None
 
             st.session_state["chat_history"].insert(0, {
                 "question": user_input,

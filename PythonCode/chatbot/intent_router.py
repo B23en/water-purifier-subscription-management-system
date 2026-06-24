@@ -36,37 +36,36 @@ def apply_intent(intent_data, dashboard_registry):
         start_month = f"{year}.01"
         end_month = today
 
-    # ✅ 적용
-    if start_month:
+    # ✅ 적용 (data_type 이 비어 있으면 쓰레기 키 생성 방지)
+    if data_type and start_month:
         st.session_state[f"{data_type}_start_month"] = start_month
 
-    if end_month:
+    if data_type and end_month:
         st.session_state[f"{data_type}_end_month"] = end_month
 
     # -----------------------------
     # ✅ Dashboard 선택
     # -----------------------------
+    # 미구축 대시보드면 선택하지 않고 안내 후 종료
+    if not intent_data.get("dashboard_supported", True):
+        st.warning(intent_data.get("message", "Dashboard 미구축"))
+        return
+
     dashboards = dashboard_registry.get(data_type, [])
 
-    
     # dashboard 기본값 처리
     if not dashboard_keyword:
         dashboard_keyword = "계약유형"
 
-    
-    # ✅ 매칭 개선
+    # ✅ 공백 무시 substring 매칭
+    #    (라벨 "① 누적 계정 현황" vs 키워드 "누적계정현황" 불일치 해소)
+    #    matched 는 미매칭 시 NameError 방지를 위해 None 으로 초기화한다.
+    matched = None
+    key = dashboard_keyword.replace(" ", "")
     for d in dashboards:
-        if dashboard_keyword in d["label"] or dashboard_keyword in d["id"]:
+        if key in d["label"].replace(" ", "") or key in d["id"]:
             matched = d["label"]
             break
 
-
     if matched:
         st.session_state[f"{data_type}_dashboard_selector"] = matched
-
-    if not intent_data.get("dashboard_supported", True):
-        st.warning(intent_data.get("message", "Dashboard 미구축"))
-        return
-    
-    if data_type == "누적" and dashboard_keyword == "누적계정현황":
-        dashboard_keyword = "누적 계정 현황"

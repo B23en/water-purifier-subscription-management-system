@@ -253,6 +253,7 @@ dashboard_supported:
                 result["start_month"] = s
                 result["end_month"] = e
 
+            result["provider"] = provider
             print("✅ JSON 파싱 성공:", result)
             return result
 
@@ -353,7 +354,8 @@ def fallback_parse(user_input: str) -> dict:
         "end_month": end_month,
         "dashboard_supported": dashboard_supported,
         "message": message,
-        "mode": "fallback"
+        "mode": "fallback",
+        "provider": "fallback",
     }
 
     print("✅ fallback 결과:", result)
