@@ -1,0 +1,127 @@
+version: 1
+
+brands:
+  - id: coway
+    name: 코웨이
+    priority: 1
+    aliases: [Coway]
+
+  - id: cuckoo
+    name: 쿠쿠
+    priority: 1
+    aliases: [쿠쿠홈시스, CUCKOO, 쿠쿠 인스퓨어, 인스퓨어]
+
+  - id: sk_magic
+    name: SK매직
+    priority: 1
+    aliases: [SK magic, SK매직몰]
+
+  - id: samsung_electronics
+    name: 삼성전자
+    priority: 1
+    aliases: [삼성, Samsung, BESPOKE, 비스포크, 삼성닷컴]
+
+category_terms:
+  core:
+    - 정수기
+
+  product_types:
+    - 얼음정수기
+    - 직수정수기
+    - 냉온정수기
+    - 냉정수기
+    - 온정수기
+    - 미니정수기
+    - 언더싱크 정수기
+    - 스파클링 정수기
+    - 탄산수 정수기
+    - 미네랄 정수기
+    - 알칼리 정수기
+
+  sales_terms:
+    - 구매
+    - 렌탈
+    - 일시불
+    - 구독
+    - 월 렌탈료
+    - 카드할인
+
+market_terms:
+  launch:
+    - 신제품
+    - 출시
+    - 공개
+
+  promotion:
+    - 프로모션
+    - 할인
+    - 특가
+    - 혜택
+    - 사은품
+    - 무료
+    - 감사제
+    - 페스티벌
+    - 기획전
+    - 이벤트
+
+  marketing:
+    - 광고
+    - 캠페인
+    - 홈쇼핑
+    - 라이브커머스
+
+  risk:
+    - 리콜
+    - 품질
+    - 불량
+    - 누수
+    - AS
+
+query_strategy:
+  max_queries_per_brand_per_source: 15
+
+  template_groups:
+    news_market:
+      - "{brand} 정수기 {launch}"
+      - "{brand} 정수기 {promotion}"
+      - "{brand} 정수기 {marketing}"
+      - "{brand} 정수기 {risk}"
+      - "{brand} {product_type} {promotion}"
+
+    broad_market:
+      - "정수기 {launch}"
+      - "정수기 {promotion}"
+      - "정수기 {risk}"
+      - "{product_type} {promotion}"
+
+sources:
+  naver_news:
+    enabled: true
+    type: api
+    cadence: daily
+    use_template_groups:
+      - news_market
+      - broad_market
+    max_results_per_query: 50
+
+  naver_blog:
+    enabled: true
+    type: api
+    cadence: daily
+    display: 10
+    sort: date
+    fetch_body: true
+    body_limit_per_query: 5
+    query_templates:
+      - "{brand} 정수기 후기"
+      - "{brand} 정수기 리뷰"
+      - "{brand} 정수기 단점"
+      - "{brand} 신제품 정수기 후기"
+
+  naver_shopping:
+    enabled: true
+    type: api
+    cadence: daily
+    display: 50
+    sort: sim
+    query_template: "{brand} 정수기"
