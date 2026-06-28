@@ -3,10 +3,16 @@
 import os
 import json
 import re
+import logging
 from dotenv import load_dotenv
 from openai import OpenAI, AzureOpenAI
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+# LLM 클라이언트는 최초 1회만 생성해 재사용 (질문마다 재생성 방지)
+_CLIENT_CACHE = None
 
 
 # ==========================================================
@@ -21,37 +27,71 @@ def get_llm_client():
     3) 둘 다 없으면 (None, None, None) → 키워드 fallback
 
     반환: (client, model, provider)
-    - OpenAI / AzureOpenAI 모두 client.chat.completions.create() 인터페이스 동일
+    - 최초 1회만 생성해 모듈 캐시에 저장하고 이후 재사용한다.
+      (Streamlit 재실행마다 client 를 새로 만들지 않도록)
     """
+    global _CLIENT_CACHE
+    if _CLIENT_CACHE is not None:
+        return _CLIENT_CACHE
+
+    result = (None, None, None)
+
     # 1) 개인 OpenAI 키
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
             client = OpenAI(api_key=openai_key)
             model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            print(f"✅ OpenAI client 생성 성공 (model={model})")
-            return client, model, "openai"
+            logger.info("OpenAI client 생성 성공 (model=%s)", model)
+            result = (client, model, "openai")
         except Exception as e:
-            print("🚨 OpenAI client 생성 실패:", e)
+            logger.warning("OpenAI client 생성 실패: %s", e)
 
     # 2) Azure OpenAI (운영)
-    endpoint = os.getenv("AZURE_OAI_ENDPOINT")
-    azure_key = os.getenv("AZURE_OAI_KEY")
-    deployment = os.getenv("AZURE_OAI_DEPLOYMENT")
-    if endpoint and azure_key and deployment:
-        try:
-            client = AzureOpenAI(
-                api_key=azure_key,
-                azure_endpoint=endpoint,
-                api_version="2024-02-15-preview",
-            )
-            print("✅ Azure client 생성 성공")
-            return client, deployment, "azure"
-        except Exception as e:
-            print("🚨 Azure client 생성 실패:", e)
+    if result[0] is None:
+        endpoint = os.getenv("AZURE_OAI_ENDPOINT")
+        azure_key = os.getenv("AZURE_OAI_KEY")
+        deployment = os.getenv("AZURE_OAI_DEPLOYMENT")
+        if endpoint and azure_key and deployment:
+            try:
+                client = AzureOpenAI(
+                    api_key=azure_key,
+                    azure_endpoint=endpoint,
+                    api_version="2024-02-15-preview",
+                )
+                logger.info("Azure client 생성 성공")
+                result = (client, deployment, "azure")
+            except Exception as e:
+                logger.warning("Azure client 생성 실패: %s", e)
 
-    print("🚨 사용 가능한 LLM 키 없음 → fallback")
-    return None, None, None
+    if result[0] is None:
+        logger.info("사용 가능한 LLM 키 없음 → 키워드 fallback")
+
+    _CLIENT_CACHE = result
+    return result
+
+
+def _chat_completion_json(client, model, prompt):
+    """
+    JSON 모드(response_format)를 우선 사용해 호출한다.
+    일부 구버전 모델/Azure 배포는 response_format 을 지원하지 않으므로,
+    그 경우 일반 모드로 1회 재시도한다(LLM 자체를 포기하지 않음).
+    """
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        return client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        logger.warning("JSON 모드 미지원 추정 → 일반 모드로 재시도: %s", e)
+        return client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0,
+        )
 
 
 # ==========================================================
@@ -163,11 +203,11 @@ def parse_query(user_input: str) -> dict:
 
     # ✅ CASE 1: 사용 가능한 키 없음
     if client is None:
-        print("🚨 [FALLBACK] LLM client 없음")
+        logger.info("[fallback] LLM client 없음")
         return fallback_parse(user_input)
 
     try:
-        print(f"✅ [CASE2] LLM 호출 시작 (provider={provider})")
+        logger.info("LLM 호출 시작 (provider=%s)", provider)
 
         prompt = f"""
 반드시 아래 JSON 형식으로만 출력해라. 설명 금지. 코드블록 금지.
@@ -230,16 +270,12 @@ dashboard_supported:
 {user_input}
 """
 
-        res = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
+        res = _chat_completion_json(client, model, prompt)
 
         content = res.choices[0].message.content
-        print("📌 응답 원문:", content)
+        logger.debug("LLM 응답 원문: %s", content)
 
-        # ✅ JSON 추출
+        # ✅ JSON 추출 (JSON 모드를 못 쓴 경우 대비한 안전망)
         json_match = re.search(r"\{.*\}", content, re.DOTALL)
 
         if json_match:
@@ -253,16 +289,16 @@ dashboard_supported:
                 result["start_month"] = s
                 result["end_month"] = e
 
-            print("✅ JSON 파싱 성공:", result)
+            result["provider"] = provider
+            logger.info("JSON 파싱 성공: %s", result)
             return result
 
         else:
-            print("🚨 JSON 없음 → fallback")
+            logger.warning("응답에서 JSON 을 찾지 못함 → fallback")
             return fallback_parse(user_input)
 
     except Exception as e:
-        print("🚨 [CASE2] API 실패 → fallback")
-        print("에러:", e)
+        logger.warning("LLM 호출/파싱 실패 → fallback: %s", e)
         return fallback_parse(user_input)
 
 
@@ -271,7 +307,7 @@ dashboard_supported:
 # ==========================================================
 def fallback_parse(user_input: str) -> dict:
 
-    print("⚠️ [FALLBACK 실행됨]")
+    logger.info("[fallback] 키워드 규칙 파싱 실행")
 
     text = user_input.lower()
 
@@ -353,8 +389,9 @@ def fallback_parse(user_input: str) -> dict:
         "end_month": end_month,
         "dashboard_supported": dashboard_supported,
         "message": message,
-        "mode": "fallback"
+        "mode": "fallback",
+        "provider": "fallback",
     }
 
-    print("✅ fallback 결과:", result)
+    logger.info("fallback 결과: %s", result)
     return result
