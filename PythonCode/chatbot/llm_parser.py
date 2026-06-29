@@ -4,6 +4,7 @@ import os
 import json
 import re
 import logging
+from datetime import date
 from dotenv import load_dotenv
 from openai import OpenAI, AzureOpenAI
 
@@ -156,6 +157,83 @@ def extract_period(user_input: str):
 
 
 # ==========================================================
+# ✅ 상대 기간 해석 (오늘 기준)
+# ==========================================================
+def _today_ym():
+    t = date.today()
+    return t.year, t.month
+
+
+def anchor_month() -> str:
+    """상대표현의 기준이 되는 '현재월'(오늘 기준) YYYY.MM."""
+    y, m = _today_ym()
+    return f"{y}.{m:02d}"
+
+
+def _shift_ym(y: int, m: int, n: int):
+    idx = y * 12 + (m - 1) + n
+    return idx // 12, idx % 12 + 1
+
+
+def _fmt_ym(y: int, m: int) -> str:
+    return f"{y}.{m:02d}"
+
+
+def resolve_period(user_input: str):
+    """절대월 + 상대표현(오늘 기준)을 모두 해석해 (start_month, end_month) 반환.
+
+    - 절대월 2개 → 범위 / 1개(부터·까지 없음) → 단일월(start=end)
+    - 상대: 이번달=0, 지난달/저번달=-1, 저저번달/지지난달=-2, N개월 전=-N (단일월)
+    - 최근 N개월 → 범위, 올해/작년 → 범위
+    """
+    # 1) 절대월 우선
+    months = extract_month_candidates(user_input)
+    if len(months) >= 2:
+        return months[0], months[1]
+    if len(months) == 1:
+        m = months[0]
+        if "부터" in user_input:
+            return m, ""
+        if "까지" in user_input:
+            return "", m
+        return m, m  # 단일 절대월 → 그 달
+
+    # 2) 상대표현 (오늘 기준)
+    y, mo = _today_ym()
+    t = user_input
+
+    rng = re.search(r"최근\s*(\d{1,2})\s*개?월", t)
+    if rng:
+        n = max(1, int(rng.group(1)))
+        sy, sm = _shift_ym(y, mo, -(n - 1))
+        return _fmt_ym(sy, sm), _fmt_ym(y, mo)
+
+    if "올해" in t or "금년" in t:
+        return _fmt_ym(y, 1), _fmt_ym(y, mo)
+    if "작년" in t or "전년" in t:
+        return _fmt_ym(y - 1, 1), _fmt_ym(y - 1, 12)
+
+    # 단일 상대월 (구체적인 것부터: -2 → -1 → 0)
+    if any(k in t for k in ["저저번달", "지지난달", "전전월", "두달전", "두 달 전", "2개월 전", "2달 전"]):
+        sy, sm = _shift_ym(y, mo, -2)
+        return _fmt_ym(sy, sm), _fmt_ym(sy, sm)
+
+    nago = re.search(r"(\d{1,2})\s*(?:개월|달)\s*전", t)
+    if nago:
+        sy, sm = _shift_ym(y, mo, -int(nago.group(1)))
+        return _fmt_ym(sy, sm), _fmt_ym(sy, sm)
+
+    if any(k in t for k in ["지난달", "저번달", "전월", "지난 달", "저번 달"]):
+        sy, sm = _shift_ym(y, mo, -1)
+        return _fmt_ym(sy, sm), _fmt_ym(sy, sm)
+
+    if any(k in t for k in ["이번달", "금월", "당월", "이번 달"]):
+        return _fmt_ym(y, mo), _fmt_ym(y, mo)
+
+    return "", ""
+
+
+# ==========================================================
 # ✅ LLM 응답 후처리
 # ==========================================================
 def normalize_result(result: dict) -> dict:
@@ -222,8 +300,13 @@ def parse_query(user_input: str) -> dict:
     try:
         logger.info("LLM 호출 시작 (provider=%s)", provider)
 
+        _t = date.today()
+        anchor = f"{_t.year}.{_t.month:02d}"
         prompt = f"""
 반드시 아래 JSON 형식으로만 출력해라. 설명 금지. 코드블록 금지.
+
+[기준 정보] 오늘은 {_t.isoformat()} 이고, 현재월(기준월)은 {anchor} (YYYY.MM) 이다.
+질문의 상대적 기간 표현은 반드시 이 기준월로 환산해 start_month/end_month(YYYY.MM)에 넣어라.
 
 허용값:
 
@@ -285,7 +368,12 @@ dashboard_supported:
    - 계약유형/계약이면 dashboard="계약유형", dashboard_supported=true
    - 방문주기/방문 또는 판매채널/채널이면 dashboard="미구축", dashboard_supported=false, message="Dashboard 미구축"
 
-7. 기간이 있으면 start_month, end_month에 YYYY.MM 형식으로 넣고, 없으면 빈 문자열로 둔다.
+7. 기간 처리 (기준월 = 위 [기준 정보]의 현재월):
+   - 절대월(예: 2024.03, 2024년 3월)이 있으면 그대로 사용. 한 개면 start=end로 둔다.
+   - 상대표현은 기준월로 환산: 이번달=기준월, 지난달/저번달=기준월-1,
+     저저번달/지지난달=기준월-2, "N개월 전"=기준월-N → 모두 단일월(start=end).
+   - "최근 N개월"=start 기준월-(N-1), end 기준월. "올해"=올해.01~기준월. "작년"=작년.01~작년.12.
+   - 기간 표현이 전혀 없으면 start_month, end_month 둘 다 빈 문자열로 둔다.
 8. 반드시 JSON만 출력한다.
 
 출력 형식:
@@ -315,9 +403,9 @@ dashboard_supported:
             result = json.loads(json_str)
             result = normalize_result(result)
 
-            # ✅ 기간이 비었으면 fallback regex로 한 번 더 보강
+            # ✅ 기간이 비었으면 상대표현 해석으로 한 번 더 보강(오늘 기준)
             if not result["start_month"] and not result["end_month"]:
-                s, e = extract_period(user_input)
+                s, e = resolve_period(user_input)
                 result["start_month"] = s
                 result["end_month"] = e
 
@@ -344,9 +432,9 @@ def fallback_parse(user_input: str) -> dict:
     text = user_input.lower()
 
     # ------------------------------------------
-    # 기간 추출
+    # 기간 추출 (절대월 + 상대표현, 오늘 기준)
     # ------------------------------------------
-    start_month, end_month = extract_period(user_input)
+    start_month, end_month = resolve_period(user_input)
 
     # ------------------------------------------
     # data_type 결정
