@@ -234,6 +234,33 @@ def resolve_period(user_input: str):
 
 
 # ==========================================================
+# ✅ 예측/요인분석 의도 결정적 보정 (LLM 오분류 방지)
+# ==========================================================
+_FORECAST_KW = ("예측", "예상", "전망", "다음달", "내년", "앞으로", "향후")
+_FACTOR_KW = ("원인", "요인", "기여", "왜", "때문", "주도", "이유")
+
+
+def forecast_or_factor_override(data_type: str, user_input: str):
+    """사용자 텍스트의 예측/요인분석 의도를 키워드로 확정한다.
+
+    LLM 이 "해지 다음달 전망" 같은 질의에 dashboard='미구축'(예측 미지원)을
+    반환하는 오분류가 있어, 키워드가 명확하면 코드가 대시보드/지원여부를 확정한다.
+    반환: (dashboard, supported, message) 또는 None(해당 없음).
+    """
+    if not data_type:
+        return None
+    if any(k in user_input for k in _FORECAST_KW):
+        if data_type in ("신규", "해지"):
+            return ("예측", True, "")
+        return ("미구축", False, "예측은 신규/해지만 지원합니다.")
+    if any(k in user_input for k in _FACTOR_KW):
+        if data_type in ("신규", "해지", "만기"):
+            return ("요인분석", True, "")
+        return ("미구축", False, "요인분석은 신규/해지/만기만 지원합니다.")
+    return None
+
+
+# ==========================================================
 # ✅ LLM 응답 후처리
 # ==========================================================
 def normalize_result(result: dict) -> dict:
@@ -408,6 +435,11 @@ dashboard_supported:
                 s, e = resolve_period(user_input)
                 result["start_month"] = s
                 result["end_month"] = e
+
+            # ✅ 예측/요인분석 의도는 키워드로 확정(LLM 오분류 보정)
+            ov = forecast_or_factor_override(result["data_type"], user_input)
+            if ov:
+                result["dashboard"], result["dashboard_supported"], result["message"] = ov
 
             result["provider"] = provider
             logger.info("JSON 파싱 성공: %s", result)
