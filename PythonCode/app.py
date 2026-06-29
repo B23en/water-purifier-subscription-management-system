@@ -167,6 +167,24 @@ DASHBOARD_REGISTRY = {
                 fallback_title="신규 - 계약유형별 판매수량"
             ),
         },
+        {
+            "id": "new_forecast",
+            "label": "④ 다음달 예측",
+            "renderer": dynamic_import_renderer(
+                module_path="DashFormat.forecast_dashboard",
+                func_name="render_dashboard",
+                fallback_title="신규 - 다음달 예측"
+            ),
+        },
+        {
+            "id": "new_segment_contribution",
+            "label": "⑤ 요인분석(기여도)",
+            "renderer": dynamic_import_renderer(
+                module_path="DashFormat.segment_contribution_dashboard",
+                func_name="render_dashboard",
+                fallback_title="신규 - 요인분석(기여도)"
+            ),
+        },
     ],
     "해지": [
         {
@@ -178,6 +196,24 @@ DASHBOARD_REGISTRY = {
                 fallback_title="해지 - 계약유형별 해지수량"
             ),
         },
+        {
+            "id": "termination_forecast",
+            "label": "③ 다음달 예측",
+            "renderer": dynamic_import_renderer(
+                module_path="DashFormat.forecast_dashboard",
+                func_name="render_dashboard",
+                fallback_title="해지 - 다음달 예측"
+            ),
+        },
+        {
+            "id": "termination_segment_contribution",
+            "label": "④ 요인분석(기여도)",
+            "renderer": dynamic_import_renderer(
+                module_path="DashFormat.segment_contribution_dashboard",
+                func_name="render_dashboard",
+                fallback_title="해지 - 요인분석(기여도)"
+            ),
+        },
     ],
     "만기": [
         {
@@ -187,6 +223,15 @@ DASHBOARD_REGISTRY = {
                 module_path="DashFormat.expiration_contract_type_sales_dashboard",
                 func_name="render_dashboard",
                 fallback_title="만기 - 계약유형별 만기수량"
+            ),
+        },
+        {
+            "id": "expiration_segment_contribution",
+            "label": "③ 요인분석(기여도)",
+            "renderer": dynamic_import_renderer(
+                module_path="DashFormat.segment_contribution_dashboard",
+                func_name="render_dashboard",
+                fallback_title="만기 - 요인분석(기여도)"
             ),
         },
     ],

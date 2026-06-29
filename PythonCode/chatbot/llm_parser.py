@@ -163,7 +163,7 @@ def normalize_result(result: dict) -> dict:
     누락 방지 / 허용값 정리
     """
     allowed_data_types = ["신규", "해지", "만기", "누적"]
-    allowed_dashboards = ["채널", "방문주기", "계약유형", "누적계정현황", "미구축"]
+    allowed_dashboards = ["채널", "방문주기", "계약유형", "누적계정현황", "예측", "요인분석", "미구축"]
 
     data_type = result.get("data_type", "")
     dashboard = result.get("dashboard", "")
@@ -183,6 +183,19 @@ def normalize_result(result: dict) -> dict:
 
     if message is None:
         message = ""
+
+    # 예측/요인분석의 지원 여부는 (data_type, dashboard) 조합으로 코드가 확정한다.
+    # (LLM 이 새 대시보드를 임의로 '미지원' 처리하는 오류 방지)
+    if dashboard == "예측":
+        if data_type in ("신규", "해지"):
+            dashboard_supported, message = True, ""
+        else:
+            dashboard_supported, message = False, "예측은 신규/해지만 지원합니다."
+    elif dashboard == "요인분석":
+        if data_type in ("신규", "해지", "만기"):
+            dashboard_supported, message = True, ""
+        else:
+            dashboard_supported, message = False, "요인분석은 신규/해지/만기만 지원합니다."
 
     return {
         "data_type": data_type,
@@ -225,6 +238,8 @@ dashboard:
 - 방문주기
 - 계약유형
 - 누적계정현황
+- 예측
+- 요인분석
 - 미구축
 
 dashboard_supported:
@@ -234,27 +249,44 @@ dashboard_supported:
 규칙:
 1. 질문에 신규/해지/만기/누적이 명시되면 그 값을 data_type으로 쓴다.
 2. 신규/해지/만기/누적이 명시되지 않았을 때:
+   - "재구독률/재구독"이 있으면 data_type="신규"
    - "판매"라는 단어가 있으면 data_type="신규"
    - 관련 단어가 없으면 data_type="누적"
 
-3. 신규의 dashboard 규칙:
+3. 예측/요인분석 규칙 (아래 컬럼별 규칙보다 우선). 과거(요인분석)와 미래(예측)를 구분하라:
+
+   (3-1) 과거에 "왜 변했는지"를 묻거나 원인/요인을 찾으면 dashboard="요인분석".
+     - 신호어: 원인, 요인, 기여, 왜, 때문, 주도, 이유, 줄었/늘었/감소/증가 + (왜/원인)
+     - 특정 과거 월(예: 2024.03)의 증감 이유를 물으면 거의 항상 요인분석이다.
+     - 예: "2024년 3월 신규가 왜 줄었어" → 요인분석, "해지 증가 원인" → 요인분석
+     - 신규/해지/만기면 dashboard_supported=true / 누적이면 dashboard="미구축", dashboard_supported=false, message="요인분석 미지원"
+
+   (3-2) 미래 값을 묻거나 전망/예상하면 dashboard="예측".
+     - 신호어: 예측, 예상, 전망, 다음달, 내년, 앞으로, 향후 (미래 표현이 있을 때만)
+     - 예: "다음달 신규 예측" → 예측, "해지 전망" → 예측
+     - "재구독률/재구독" 예측이면 data_type="신규", dashboard="예측"
+     - 신규/해지면 dashboard_supported=true / 만기·누적이면 dashboard="미구축", dashboard_supported=false, message="예측 미지원"
+
+   (3-3) "왜/원인"(과거)과 "전망/예측"(미래)이 함께 없으면 이 규칙을 적용하지 말고 아래 컬럼별 규칙으로 간다.
+
+4. 신규의 dashboard 규칙(위 3에 해당 없을 때):
    - 판매채널/채널 -> dashboard="채널"
    - 방문주기/방문 -> dashboard="방문주기"
    - 계약유형/계약 -> dashboard="계약유형"
    - 아무 키워드가 없으면 dashboard="계약유형"
    - dashboard_supported=true
 
-4. 해지/만기의 dashboard 규칙:
+5. 해지/만기의 dashboard 규칙(위 3에 해당 없을 때):
    - 계약유형/계약 또는 키워드가 없으면 dashboard="계약유형", dashboard_supported=true
    - 방문주기/방문 또는 판매채널/채널이면 dashboard="미구축", dashboard_supported=false, message="Dashboard 미구축"
 
-5. 누적의 dashboard 규칙:
+6. 누적의 dashboard 규칙(위 3에 해당 없을 때):
    - 키워드가 없으면 dashboard="누적계정현황", dashboard_supported=true
    - 계약유형/계약이면 dashboard="계약유형", dashboard_supported=true
    - 방문주기/방문 또는 판매채널/채널이면 dashboard="미구축", dashboard_supported=false, message="Dashboard 미구축"
 
-6. 기간이 있으면 start_month, end_month에 YYYY.MM 형식으로 넣고, 없으면 빈 문자열로 둔다.
-7. 반드시 JSON만 출력한다.
+7. 기간이 있으면 start_month, end_month에 YYYY.MM 형식으로 넣고, 없으면 빈 문자열로 둔다.
+8. 반드시 JSON만 출력한다.
 
 출력 형식:
 {{
@@ -319,6 +351,11 @@ def fallback_parse(user_input: str) -> dict:
     # ------------------------------------------
     # data_type 결정
     # ------------------------------------------
+    # 예측/요인분석 의도 (재구독률 언급은 신규로 흡수)
+    has_forecast = any(k in text for k in ["예측", "예상", "전망", "다음달", "내년", "앞으로"])
+    has_factor = any(k in text for k in ["원인", "요인", "기여", "왜", "때문", "주도", "이유"])
+    has_resub = ("재구독" in text)
+
     if "신규" in text:
         data_type = "신규"
     elif "해지" in text:
@@ -329,7 +366,9 @@ def fallback_parse(user_input: str) -> dict:
         data_type = "누적"
     else:
         # ✅ 계정 관련 명시 없을 때
-        if "판매" in text:
+        if has_resub:
+            data_type = "신규"
+        elif "판매" in text:
             data_type = "신규"
         else:
             data_type = "누적"
@@ -346,9 +385,28 @@ def fallback_parse(user_input: str) -> dict:
     message = ""
 
     # ------------------------------------------
+    # 예측 / 요인분석 (컬럼별 규칙보다 우선)
+    # ------------------------------------------
+    if has_forecast:
+        if data_type in ["신규", "해지"]:
+            dashboard = "예측"
+        else:
+            dashboard = "미구축"
+            dashboard_supported = False
+            message = "예측 미지원"
+
+    elif has_factor:
+        if data_type in ["신규", "해지", "만기"]:
+            dashboard = "요인분석"
+        else:
+            dashboard = "미구축"
+            dashboard_supported = False
+            message = "요인분석 미지원"
+
+    # ------------------------------------------
     # 신규
     # ------------------------------------------
-    if data_type == "신규":
+    elif data_type == "신규":
         if has_channel:
             dashboard = "채널"
         elif has_visit:
