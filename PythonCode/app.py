@@ -235,6 +235,17 @@ DASHBOARD_REGISTRY = {
             ),
         },
     ],
+    "시장동향": [
+        {
+            "id": "market_trend",
+            "label": "① 시장동향 (뉴스·쇼핑)",
+            "renderer": dynamic_import_renderer(
+                module_path="DashFormat.market_trend_dashboard",
+                func_name="render_dashboard",
+                fallback_title="시장동향"
+            ),
+        },
+    ],
 }
 
 
@@ -637,22 +648,35 @@ with main_tab1:
 
     
 
-    tab_options = ["누적", "신규", "해지", "만기"]
+    # 데이터 구분: 버튼형 세그먼트 바 (활성 탭은 primary 색으로 강조).
+    # 챗봇이 selected_data_type 을 바꿔두면 그대로 반영되므로 별도 위젯 sync 가 불필요.
+    tab_options = [
+        ("누적", "📊 누적"),
+        ("신규", "🆕 신규"),
+        ("해지", "🔚 해지"),
+        ("만기", "📅 만기"),
+        ("시장동향", "🌐 시장동향"),
+    ]
+    st.session_state.pop("force_tab_sync", None)  # 레거시 sync 플래그 정리(버튼 방식엔 불필요)
 
-    # ✅ ✅ 1회성 sync
-    if st.session_state.get("force_tab_sync", False):
-        st.session_state["main_type_selector"] = st.session_state["selected_data_type"]
-        st.session_state["force_tab_sync"] = False   # ✅ 중요 (1회만 실행)
+    valid_types = [v for v, _ in tab_options]
+    if st.session_state.get("selected_data_type") not in valid_types:
+        st.session_state["selected_data_type"] = "누적"
+    current_tab = st.session_state["selected_data_type"]
 
-    selected_tab = st.radio(
-        "데이터 구분",
-        tab_options,
-        horizontal=True,
-        key="main_type_selector"
-    )
+    st.markdown("**데이터 구분**")
+    tab_cols = st.columns(len(tab_options))
+    for col, (val, label) in zip(tab_cols, tab_options):
+        if col.button(
+            label,
+            key=f"tab_btn_{val}",
+            use_container_width=True,
+            type="primary" if val == current_tab else "secondary",
+        ):
+            st.session_state["selected_data_type"] = val
+            st.rerun()
 
-    # ✅ radio → session 반영
-    st.session_state["selected_data_type"] = selected_tab
+    selected_tab = st.session_state["selected_data_type"]
 
 
 
@@ -739,3 +763,11 @@ with main_tab1:
         render_dashboard_group("만기")
     elif selected_tab == "누적":
         render_dashboard_group("누적")
+    elif selected_tab == "시장동향":
+        # 시장동향은 월별 report_context(JSON) 시각화 — 조회기간 입력이 불필요하므로
+        # render_dashboard_group 을 거치지 않고 렌더러를 직접 호출한다.
+        st.subheader("시장동향 Dashboard")
+        DASHBOARD_REGISTRY["시장동향"][0]["renderer"]({
+            "data_type": "시장동향",
+            "summary_dir": SUMMARY_DIR,
+        })
