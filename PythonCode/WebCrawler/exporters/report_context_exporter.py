@@ -247,6 +247,7 @@ def build_summary_events(
             "brand_name": document.get("brand"),
             "title": document.get("title"),
             "summary": document.get("summary"),
+            "url": document.get("url"),
             "facts": facts,
             "mentioned_products": mentioned_products,
             "sentiment": document.get("sentiment"),

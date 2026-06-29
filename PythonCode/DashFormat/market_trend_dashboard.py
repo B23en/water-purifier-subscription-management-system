@@ -11,10 +11,6 @@ import re
 from pathlib import Path
 
 import streamlit as st
-import matplotlib.pyplot as plt
-
-plt.rcParams["font.family"] = "Malgun Gothic"
-plt.rcParams["axes.unicode_minus"] = False
 
 _FNAME_RE = re.compile(r"report_context_(\d{4}-\d{2})_.+\.json$")
 
@@ -93,23 +89,9 @@ def _render_events(events):
             prods = ev.get("mentioned_products") or []
             if prods:
                 st.caption("언급 제품: " + ", ".join(map(str, prods)))
-
-
-def _render_event_distribution(market_summary):
-    counts = market_summary.get("event_counts") or {}
-    if not counts:
-        return
-    labels = [EVENT_TYPE_KR.get(k, k) for k in counts.keys()]
-    vals = list(counts.values())
-    fig, ax = plt.subplots(figsize=(8, max(1.6, 0.5 * len(labels))))
-    ax.barh(labels[::-1], vals[::-1], color="#3498DB")
-    ax.set_xlabel("이벤트 수")
-    ax.set_title("이벤트 유형 분포")
-    for i, v in enumerate(vals[::-1]):
-        ax.text(v, i, f" {v}", va="center")
-    plt.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
+            url = ev.get("url")
+            if url:
+                st.markdown(f"🔗 [원문 보기]({url})")
 
 
 def _render_shopping(shopping):
@@ -176,7 +158,6 @@ def render_dashboard(context: dict):
     c[4].metric("브랜드 수", stats.get("shopping_brand_count", 0))
 
     st.markdown("---")
-    _render_event_distribution(ms)
     _render_events(ctx.get("events", []))
     st.markdown("---")
     _render_shopping(ctx.get("shopping", {}))
