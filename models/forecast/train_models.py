@@ -10,11 +10,22 @@
 """
 import os
 import warnings
+from datetime import date
 import numpy as np
 import duckdb
 warnings.filterwarnings("ignore")
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+
+def _last_complete_month() -> str:
+    """오늘 기준 직전 완전월 'YYYY.MM'.
+    진행 중인 현재 달은 아직 미완성이라 시계열에서 제외한다.
+    (예전엔 상한이 '2026.05'로 고정돼 있어 새 데이터가 자동 반영되지 않았음 →
+     이제 매월 자동으로 한 칸씩 올라가, 데이터를 적재하면 예측이 그 데이터까지 포함한다.)"""
+    t = date.today()
+    y, m = (t.year - 1, 12) if t.month == 1 else (t.year, t.month - 1)
+    return f"{y}.{m:02d}"
 
 # ── 데이터 경로 (환경변수로만 주입, 데이터는 git 밖) ──
 def _summary_dir():
@@ -30,7 +41,8 @@ def _summary_dir():
 _DATE_COL = {"신규": "계약시작월", "해지": "해지완료월", "만기": "만기월"}
 
 def load_series(target):
-    """월총계(또는 재구독률) 시계열 로드 + 완전월(2020.01~2026.05) 게이트.
+    """월총계(또는 재구독률) 시계열 로드 + 완전월(2020.01 ~ 직전 완전월) 게이트.
+    상한은 오늘 기준 전월로 자동 결정되어, 데이터가 쌓이면 그만큼 자동 포함된다.
     target ∈ {신규, 해지, 재구독률}. 반환: (months[list], values[np.array])"""
     sd = _summary_dir()
     if target == "재구독률":
@@ -43,7 +55,7 @@ def load_series(target):
         p = os.path.join(sd, f"{target}_년월.parquet")
         q = f"SELECT \"{c}\" m, SUM(계정수) v FROM read_parquet('{p}') GROUP BY 1 ORDER BY 1"
     df = duckdb.query(q).df()
-    df = df[(df.m >= "2020.01") & (df.m <= "2026.05")].reset_index(drop=True)  # 완전월만
+    df = df[(df.m >= "2020.01") & (df.m <= _last_complete_month())].reset_index(drop=True)  # 완전월만(전월까지)
     return df.m.tolist(), df.v.values.astype(float)
 
 # ── 모델 정의 (학습 + 1-step 예측) ──
