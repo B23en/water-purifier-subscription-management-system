@@ -239,18 +239,19 @@ def build_pivot_with_yearly_cumulative(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------
 # 계약유형별 누적 적층 그래프
 # ---------------------------------------------------------
-def render_stacked_cumulative_chart(result: pd.DataFrame):
+def render_cumulative_by_type_chart(result: pd.DataFrame):
     """
-    월별 누적계정을 계약유형별 적층 막대로 표시
-    - 아래부터: 운용리스 → 금융리스 → 일시불 → 케어십
-    - 각 segment 중앙에 수치 + 비중 표시
-    - 막대 상단에 월별 총 누적 수치 표시
+    월별 누적계정을 계약유형별 '선 그래프'로 표시.
+
+    누적계정수는 표본 절단(2019년 이전 계약 미포함) 때문에 운용리스/일시불에서
+    음수가 된다. 부호가 섞인 값을 적층 막대로 그리면 축이 뒤집히고 라벨이 겹쳐
+    가독성이 크게 떨어지므로, 음수도 자연스럽게 표현되는 선 그래프로 그린다.
     """
     if result.empty:
         st.caption("그래프용 데이터 없음")
         return
 
-    # ✅ 적층 순서 = 범례 순서
+    # 범례/선 순서
     chart_order = ["운용리스", "금융리스", "일시불", "케어십"]
 
     # ✅ 금융리스 색상 변경 (텍스트 가독성 확보용)
@@ -282,91 +283,51 @@ def render_stacked_cumulative_chart(result: pd.DataFrame):
 
     x = range(len(monthly_pivot))
 
-    st.markdown("### 📊 계약유형별 월별 누적 계정")
-    fig, ax = plt.subplots(figsize=(14, 4.2))
+    st.markdown("### 📈 계약유형별 월별 누적 계정 추이")
 
-    bottom = pd.Series([0] * len(monthly_pivot), index=monthly_pivot.index)
+    n = len(monthly_pivot)
+    fig_w = max(12, min(20, 0.7 * n + 4))
+    fig, ax = plt.subplots(figsize=(fig_w, 5))
 
-    # ✅ 막대 적층
-    bar_handles = []
+    # 계약유형별 선 그래프 (음수 누적도 자연스럽게 표현, 적층 대비 라벨 겹침 없음)
     for ct in chart_order:
-        vals = monthly_pivot[ct]
-
-        bars = ax.bar(
-            x,
-            vals,
-            bottom=bottom,
-            label=ct,
-            color=color_map.get(ct, "#999999"),
-            alpha=0.9
+        y = monthly_pivot[ct].values
+        ax.plot(
+            x, y, marker="o", markersize=4, linewidth=2,
+            label=ct, color=color_map.get(ct, "#999999"),
         )
-        bar_handles.append(bars)
-
-        # ✅ 각 segment 가운데 값 + 비중 표시
-        totals = monthly_pivot.sum(axis=1)
-
-        for i, v in enumerate(vals):
-            if v == 0:
-                continue
-
-            total = totals.iloc[i]
-            pct = (v / total * 100) if total != 0 else 0
-
-            y_pos = bottom.iloc[i] + (v / 2)
-
-            ax.text(
-                i,
-                y_pos,
-                f"{v:,.0f}\n({pct:.0f}%)",
-                ha="center",
-                va="center",
-                fontsize=9,
-                color="#1B5E20",   # ✅ 짙은 초록색
-                fontweight="bold"
+        # 끝점에만 값 라벨 → 라벨끼리 겹치지 않음
+        if len(y):
+            ax.annotate(
+                f"{y[-1]:,.0f}",
+                (list(x)[-1], y[-1]),
+                textcoords="offset points", xytext=(6, 0),
+                va="center", fontsize=9,
+                color=color_map.get(ct, "#555"), fontweight="bold",
             )
 
-        bottom = bottom + vals
-
-    # ✅ 월별 총 누적 수량 표시 (상단)
-    totals = monthly_pivot.sum(axis=1)
-    for i, total in enumerate(totals):
-        ax.text(
-            i,
-            total + max(totals) * 0.015,
-            f"{total:,.0f}",
-            ha="center",
-            va="bottom",
-            fontsize=10,
-            fontweight="bold",
-            color="black"
-        )
-
+    ax.axhline(0, color="#888888", linewidth=0.8)   # 0 기준선
     ax.set_xticks(list(x))
     ax.set_xticklabels(month_labels, rotation=45)
     ax.set_ylabel("누적계정수 (천)")
+    ax.grid(axis="y", linestyle=":", alpha=0.4)
 
-    # ✅ 범례 순서도 적층 순서와 동일하게 고정
+    # 범례 순서 고정 + 그래프 위쪽 바깥
     handles, labels = ax.get_legend_handles_labels()
     order_map = {name: idx for idx, name in enumerate(chart_order)}
-    ordered = sorted(zip(handles, labels), key=lambda x: order_map.get(x[1], 999))
-    ordered_handles = [h for h, _ in ordered]
-    ordered_labels = [l for _, l in ordered]
-
-    # ✅ 범례 가로 배치 + 그래프 위쪽 바깥으로 이동
+    ordered = sorted(zip(handles, labels), key=lambda hl: order_map.get(hl[1], 999))
     ax.legend(
-        ordered_handles,
-        ordered_labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),   # 그래프 위쪽
-        ncol=4,                        # 가로 4개
-        frameon=False                  # 테두리 제거
+        [h for h, _ in ordered], [l for _, l in ordered],
+        loc="lower center", bbox_to_anchor=(0.5, 1.02), ncol=4, frameon=False,
     )
-
-    y_max = totals.max() * 1.15 if len(totals) else 1
-    ax.set_ylim(0, y_max)
 
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
+    st.caption(
+        "※ 계약유형별 누적계정수(천) 추이. 운용리스·일시불의 음수 누적은 표본 절단"
+        "(2019년 이전 계약 미포함)에 따른 한계입니다. 월별 정확한 값은 아래 표를 참고하세요."
+    )
 
 
 # ---------------------------------------------------------
@@ -465,7 +426,7 @@ def render_dashboard(context):
     # -------------------------------------------------
     # 6. 그래프 출력
     # -------------------------------------------------
-    render_stacked_cumulative_chart(result)
+    render_cumulative_by_type_chart(result)
 
     # -------------------------------------------------
     # 7. 출력 순서 대상 계약유형
