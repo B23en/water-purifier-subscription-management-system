@@ -116,9 +116,12 @@ def _month_analysis(target: str, month: str, base_dir: str):
 
     df = load_raw(target)
     available = set(df["년월"].unique())
+    latest = max(available) if available else "?"
     for m, label in [(month, "선택 월"), (prev_month, "전달"), (yoy_month, "전년동월")]:
         if m not in available:
-            return None, None, {}, f"{label}({m}) 데이터가 없습니다."
+            return None, None, {}, (
+                f"{label}({m}) 데이터가 없습니다. (현재 데이터는 {latest}까지 있습니다)"
+            )
 
     def month_total(m):
         return float(df[df["년월"] == m]["계정수"].sum())
@@ -219,9 +222,12 @@ def _render_trend(target: str, base_dir: str):
 
 
 def _render_month(target: str, base_dir: str, default_month: str):
-    month = st.text_input(
-        "분석할 연월 (YYYY.MM)", value=default_month, key=f"seg_month_{target}",
-    ).strip()
+    # 챗봇 딥링크가 세션에 월을 주입할 수 있으므로, 기본값은 세션에 한 번만 심고
+    # 위젯에는 value= 를 주지 않는다(Session State + value 동시 지정 경고 방지).
+    month_key = f"seg_month_{target}"
+    if month_key not in st.session_state:
+        st.session_state[month_key] = default_month
+    month = st.text_input("분석할 연월 (YYYY.MM)", key=month_key).strip()
     try:
         pd.Period(month.replace(".", "-"), freq="M")
     except Exception:

@@ -36,12 +36,45 @@ def apply_intent(intent_data, dashboard_registry):
         start_month = f"{year}.01"
         end_month = today
 
+    # -----------------------------
+    # ✅ 데이터 범위 초과 보정 (예: "이번달"=미래월인데 데이터는 전월까지)
+    #    YYYY.MM 은 0패딩 동일포맷이라 문자열 비교로 대소 판정 가능.
+    #    예측은 기간을 쓰지 않으므로(다음달 예측이 본질) 보정·안내 대상에서 제외.
+    # -----------------------------
+    is_forecast = bool(dashboard_keyword) and "예측" in dashboard_keyword
+    if not is_forecast:
+        period_notice = ""
+        if end_month and end_month > today:
+            period_notice = (
+                f"요청하신 {end_month}는 아직 데이터가 없어 "
+                f"최신 데이터 월({today}) 기준으로 표시합니다."
+            )
+            end_month = today
+        if start_month and start_month > today:
+            start_month = today
+        if start_month and end_month and start_month > end_month:
+            start_month = end_month
+        if period_notice:
+            st.info(period_notice)
+
     # ✅ 적용 (data_type 이 비어 있으면 쓰레기 키 생성 방지)
     if data_type and start_month:
         st.session_state[f"{data_type}_start_month"] = start_month
 
     if data_type and end_month:
         st.session_state[f"{data_type}_end_month"] = end_month
+
+    # ✅ 요인분석 + 단일월이면 세그먼트 대시보드를 '특정 월(MoM/YoY)' 모드로 열고 월 주입
+    #    (예: "저저번달 신규 왜 줄었어" → 신규/요인분석 + 2026.04 월분석 화면이 바로 뜸)
+    if (
+        data_type in ("신규", "해지", "만기")
+        and dashboard_keyword
+        and "요인분석" in dashboard_keyword
+        and start_month
+        and start_month == end_month
+    ):
+        st.session_state[f"seg_mode_{data_type}"] = "특정 월 (MoM/YoY)"
+        st.session_state[f"seg_month_{data_type}"] = start_month
 
     # -----------------------------
     # ✅ Dashboard 선택
