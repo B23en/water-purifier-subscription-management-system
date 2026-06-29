@@ -168,46 +168,15 @@ def upsert_product_snapshot(db_path: Path, snapshot: dict[str, Any]) -> bool:
         metadata_json,
     ]
 
+    # 같은 날 재크롤 시 동일 상품은 snapshot_id(PK)와 일별 유니크 인덱스
+    # (brand_id, product_url, model_code, captured_date) 양쪽에서 충돌한다.
+    # check-then-insert 는 비원자적이라 충돌 시 ConstraintException 으로 크롤이 중단되므로,
+    # 원자적 ON CONFLICT DO NOTHING 으로 처리한다(그 날 첫 스냅샷 유지, 날짜가 바뀌면 새 행).
     with duckdb.connect(str(db_path)) as connection:
-        exists = connection.execute(
-            """
-            SELECT 1
-            FROM product_snapshots
-            WHERE snapshot_id = ?
-            LIMIT 1
-            """,
+        existed = connection.execute(
+            "SELECT 1 FROM product_snapshots WHERE snapshot_id = ? LIMIT 1",
             [snapshot_id],
-        ).fetchone()
-
-        if exists:
-            connection.execute(
-                """
-                UPDATE product_snapshots
-                SET
-                    source_id = ?,
-                    brand_id = ?,
-                    brand_name = ?,
-                    product_name = ?,
-                    model_code = ?,
-                    category = ?,
-                    sales_type = ?,
-                    purchase_price = ?,
-                    rental_fee = ?,
-                    original_rental_fee = ?,
-                    promotion_text = ?,
-                    rating = ?,
-                    review_count = ?,
-                    product_url = ?,
-                    captured_date = ?,
-                    captured_at = ?,
-                    raw_path = ?,
-                    content_hash = ?,
-                    metadata_json = ?
-                WHERE snapshot_id = ?
-                """,
-                values[1:] + [snapshot_id],
-            )
-            return False
+        ).fetchone() is not None
 
         connection.execute(
             """
@@ -234,11 +203,12 @@ def upsert_product_snapshot(db_path: Path, snapshot: dict[str, Any]) -> bool:
                 metadata_json
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
             """,
             values,
         )
 
-    return True
+    return not existed
 
 
 def upsert_document_summary(db_path: Path, summary: dict[str, Any]) -> bool:
